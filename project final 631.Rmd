@@ -1,0 +1,239 @@
+---
+title: "Project final"
+author: "Thummala_Vivekananda Reddy"
+date: "2023-04-29"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r}
+library(caret)
+library(psych)
+library(vip)
+library(dplyr)
+cardio <- read.csv("~/Desktop/CSUEB/STAT 632 LLR/DATA/cardio_train.csv", sep=";")
+cardio <- cardio %>% 
+  mutate(age = round(age/356),
+         bmi = weight/((height/100)^2)) %>% 
+  rename("systolic"="ap_hi","diastolic" = "ap_lo") %>% 
+  filter(between(systolic, 70, 160),
+         between(diastolic, 40, 120),
+         between(bmi, 16, 40))
+cor_data <- cardio[,c(-1,-4,-5,-13)]
+par(mar=c(1,1,1,1))
+corPlot(cor_data)
+```
+
+```{r}
+library(Stat2Data)
+library(MASS)
+library(car)
+library(ggplot2)
+library(ggExtra)
+library(car)
+library(carData)
+library(emmeans)
+library(dplyr)
+library(rsample)
+library(purrr)
+library(ggtext)
+pacman::p_load(ROCR, pROC,naniar)
+#Importing Data
+cardio <- read.csv("~/Desktop/CSUEB/STAT 632 LLR/DATA/cardio_train.csv", sep=";")
+#Setsseed
+set.seed(3001)
+#Data Cleaning
+cardio <- cardio %>% 
+  mutate(age = round(age/356),
+         age = case_when(age <= 45 ~ 'Early Midlife',age >= 46 ~ 'Late Midlife'),
+         age = as.factor(age),
+         bmi = weight/((height/100)^2),
+         gender = factor(gender,labels = c('Female','Male')),
+         cholesterol = factor(cholesterol,labels = c('Normal','Above Normal','Well Above Normal')),
+         gluc = factor(gluc,labels = c('Normal','Above Normal','Well Above Normal')),
+         smoke = factor(smoke,labels = c('No','Yes')),
+         alco = factor(alco,labels = c('No','Yes')),
+         active = factor(active,labels = c('No','Yes')),
+         cardio = factor(cardio,labels = c('No','Yes'))) %>% 
+  rename("systolic"="ap_hi","diastolic" = "ap_lo","age_cat"="age") %>% 
+  filter(between(systolic, 70, 160),
+         between(diastolic, 40, 120),
+         between(bmi, 16, 40))
+# Data Spliting
+cardio_split <- initial_split(cardio, prop = 0.75)
+cv_train <- training(cardio_split)
+cv_testing <- testing(cardio_split)
+#Intial model
+glm2 <- glm(cardio ~ age_cat + systolic + diastolic + cholesterol + smoke  + bmi+gluc+alco+active, family = binomial, data = cv_train)
+#AIC
+glm3 <- step(glm2)
+summary(glm3)
+#multicolinearity
+round(vif(glm2), 2)
+#Final model
+glm2 <- glm(cardio ~ age_cat + systolic + diastolic + cholesterol + smoke  + bmi+gluc+alco+active, family = binomial, data = cv_train)
+#confusion matrix
+probs_test <- predict(glm2, newdata = cv_testing, type = "response")
+length(probs_test)
+preds_test <- rep(0, length(probs_test))
+preds_test[probs_test > 0.5] <- 1
+tb <- table(prediction = preds_test, actual = cv_testing$cardio)
+addmargins(tb)
+# Accuracy (percent correctly classified)
+(tb[1,1] + tb[2,2]) / 16333
+# Sensitivity (percent of cardio (1) correctly classified)
+tb[2,2] / 7830
+# Specificity (percent of cardio (0) correctly classified)
+ tb[1,1] / 8503
+#ROC
+roc_obj <- roc(cv_testing$cardio, probs_test)
+par(mar=c(4, 4, 2, 2))
+plot(1 - roc_obj$specificities, roc_obj$sensitivities, type="l",
+     xlab = "1 - Specificity", ylab = "Sensitivity")
+# using 0.5 threshold
+abline(0, 1, lty=2)
+auc(roc_obj)
+```
+
+```{r}
+library(purrr)
+#summary statistics
+cardio %>%                            
+  split(.$cardio) %>%
+  map(summary)
+cardio %>% 
+  group_by(cardio) %>% 
+  summarise_if(is.numeric, list(sd=sd))
+```
+
+```{r}
+#plots
+ggplot(cardio)+
+  geom_bar(aes(x=gender, fill=cardio ),position="dodge")+
+  facet_wrap(~age_cat)+
+  labs(x = expression(bold("Gender")),
+        y = expression(bold("Count (n)")),
+        title = expression(bold("Bar Graph of Cardiovascular Disease Status by Gender and Age")),
+       fill = expression(bold("Cardiovascular Disease Status")))
+
+
+ggplot(cardio)+
+  geom_boxplot(aes(x=cholesterol, y=bmi, fill=cardio))+
+  scale_fill_manual(values = c( "#F8766D","#00BFC4"))+
+  labs(x = expression(bold("Cholesterol Status")),
+        y = expression(bold("BMI")),
+        title = expression(bold("Box Plot of Cardiovascular Disease Status by BMI and Cholesterol")),
+       fill = expression(bold("Cardiovascular Disease Status")))
+
+  
+ggplot(cardio,aes(x=systolic, y=diastolic)) + 
+  geom_point(aes(col = cardio)) +
+  guides(col = guide_legend(expression(bold("Cardiovascular Disease Status")))) +
+  scale_color_manual(values = c("#F8766D","#00BFC4" ))+
+  labs(x = expression(bold("Systolic Blood Pressure ")),
+        y = expression(bold("Diastolic Blood Pressure ")),
+        title = expression(bold("Scatter Plot of Cardiovascular Disease Status by Blood Pressure")))
+
+ggplot(cardio)+
+  geom_bar(aes(x=gluc, fill= cardio),position="dodge")+
+  facet_wrap(~active,labeller = labeller(active=c(No="Physical Activity (No)",Yes ="Physical Activity (Yes)")))+
+  labs(x = expression(bold("Glucose Levels")),
+       y = expression(bold("Count (n)")),
+        
+        title = expression(bold("Bar Graph of Cardiovascular Disease Status by Glucose Levels and Physical Activity Status")),
+       fill = expression(bold("Cardiovascular Disease Status")))
+```
+
+```{r,warning=FALSE}
+library(pacman)
+library(pROC)
+library(dplyr)
+library(janitor)
+library(pacman)
+p_load(titanic, tidyverse, janitor, naniar, DataExplorer, tidymodels,discrim)
+p_load(NHANES, tidyverse, tidymodels, naniar)
+
+cardio <- read.csv("~/Desktop/CSUEB/STAT 632 LLR/DATA/cardio_train.csv", sep=";")
+set.seed(3001)
+cardio <- cardio %>% 
+  mutate(age = round(age/356),
+         age = case_when(age <= 45 ~ 'Early Midlife',age >= 46 ~ 'Late Midlife'),
+         age = as.factor(age),
+         bmi = weight/((height/100)^2),
+         gender = factor(gender,labels = c('Female','Male')),
+         cholesterol = factor(cholesterol,labels = c('Normal','Above Normal','Well Above Normal')),
+         gluc = factor(gluc,labels = c('Normal','Above Normal','Well Above Normal')),
+         smoke = factor(smoke,labels = c('No','Yes')),
+         alco = factor(alco,labels = c('No','Yes')),
+         active = factor(active,labels = c('No','Yes')),
+         cardio = factor(cardio)) %>% 
+  rename("systolic"="ap_hi","diastolic" = "ap_lo","age_cat"="age") %>% 
+  filter(between(systolic, 70, 160),
+         between(diastolic, 40, 120),
+         between(bmi, 16, 40))
+#Spliting
+cardio_split <- initial_split(cardio, prop = 0.75)
+cv_train <- training(cardio_split)
+cv_testing <- testing(cardio_split)
+#Null
+Null <- null_model() %>%
+  set_engine("parsnip") %>%
+  set_mode("classification") %>% 
+  fit(cardio ~  age_cat + systolic + diastolic + cholesterol + smoke  + bmi+gluc+alco+active, data = cv_train)
+
+#C5.0
+C50 <- boost_tree(trees = 20) %>% 
+  set_engine("C5.0") %>%
+  set_mode("classification") %>%
+  fit(cardio ~ age_cat + systolic + diastolic + cholesterol + smoke  + bmi+gluc+alco+active, data = cv_train)
+#XGBoost
+XGBoost <- boost_tree(trees = 20) %>% 
+  set_engine("xgboost") %>%
+  set_mode("classification") %>%
+  fit(cardio ~ age_cat + systolic + diastolic + cholesterol + smoke  + bmi+gluc+alco+active, data = cv_train)
+#Random Forest
+Random_Forest <- rand_forest(trees = 100) %>% 
+  set_engine("ranger") %>%
+  set_mode("classification") %>%
+  fit(cardio ~ age_cat + systolic + diastolic + cholesterol + smoke  + bmi+gluc+alco+active, data = cv_train)
+#GLM
+GLM <- logistic_reg(penalty = 0.001, mixture = 0.5) %>% 
+  set_engine("glmnet") %>%
+  set_mode("classification") %>%
+  fit(cardio ~ age_cat + systolic + diastolic + cholesterol + smoke  + bmi+gluc+alco+active, data = cv_train)
+#Naive Bayes
+Naive_Bayes <- naive_Bayes(Laplace = 1) %>% 
+  set_engine("klaR") %>%
+  set_mode("classification") %>%
+  fit(cardio ~ age_cat + systolic + diastolic + cholesterol + smoke  + bmi+gluc+alco+active, data = cv_train)
+rocobj1 <- Null %>%
+  predict(cv_testing, type = "prob") %>%
+  bind_cols(cv_testing) %>%
+  roc(cardio, .pred_0)
+rocobj3 <- C50 %>%
+  predict(cv_testing, type = "prob") %>%
+  bind_cols(cv_testing) %>%
+  roc(cardio, .pred_0)
+rocobj4 <- XGBoost %>%
+  predict(cv_testing, type = "prob") %>%
+  bind_cols(cv_testing) %>%
+  roc(cardio, .pred_0)
+rocobj5 <- Random_Forest %>%
+  predict(cv_testing, type = "prob") %>%
+  bind_cols(cv_testing) %>%
+  roc(cardio, .pred_0)
+rocobj6 <- GLM %>%
+  predict(cv_testing, type = "prob") %>%
+  bind_cols(cv_testing) %>%
+  roc(cardio, .pred_0)
+rocobj7 <- Naive_Bayes %>%
+  predict(cv_testing, type = "prob") %>%
+  bind_cols(cv_testing) %>%
+  roc(cardio, .pred_0) 
+ggroc(list(Null = rocobj1, C50 = rocobj3, XGBoost = rocobj4, Random_forest = rocobj5, GLM = rocobj6, Naive_Bayes = rocobj7))+labs(y="1 - Specificity")
+```
