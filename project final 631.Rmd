@@ -16,7 +16,9 @@ library(caret)
 library(psych)
 library(vip)
 library(dplyr)
+#Importing Data
 cardio <- read.csv("~/Desktop/CSUEB/STAT 632 LLR/DATA/cardio_train.csv", sep=";")
+#Data Cleaning
 cardio <- cardio %>% 
   mutate(age = round(age/356),
          bmi = weight/((height/100)^2)) %>% 
@@ -24,6 +26,7 @@ cardio <- cardio %>%
   filter(between(systolic, 70, 160),
          between(diastolic, 40, 120),
          between(bmi, 16, 40))
+#Co-relation matrix
 cor_data <- cardio[,c(-1,-4,-5,-13)]
 par(mar=c(1,1,1,1))
 corPlot(cor_data)
